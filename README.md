@@ -62,5 +62,101 @@ To prevent INJECT_ERROR from accidentally moving to production during slot swaps
 | appsettings.Development.json  | Development environment config         |
 | SreAgentMemoryDemo.csproj     | Project file                           |
 | SreAgentMemoryDemo.http       | HTTP request samples                   |
+| DEPLOYMENT_GUIDE.md           | Azure App Service deployment procedures |
+| validate-deployment.sh        | Automated deployment validation script |
 | LICENSE                       | License for this sample                |
 | README.md                     | Project documentation (this file)      |
+
+## API Endpoints
+
+### `GET /`
+Main application page with counter and error simulation controls.
+
+### `GET /health`
+Health check endpoint for deployment validation.
+
+**Response when healthy:**
+```json
+{
+  "status": "healthy",
+  "environment": "Production",
+  "timestamp": "2026-02-09T20:00:00Z"
+}
+```
+**HTTP Status:** 200
+
+**Response when unhealthy (INJECT_ERROR enabled):**
+```json
+{
+  "status": "unhealthy",
+  "reason": "INJECT_ERROR is enabled",
+  "environment": "Development",
+  "timestamp": "2026-02-09T20:00:00Z"
+}
+```
+**HTTP Status:** 503
+
+## Quick Reference
+
+### For Developers
+```bash
+# Build the application
+dotnet build
+
+# Run locally (normal mode)
+dotnet run
+
+# Run with error injection enabled (Development only)
+INJECT_ERROR=1 dotnet run
+
+# Check health endpoint
+curl http://localhost:5000/health
+```
+
+### For Operations/SRE Team
+
+**Before Slot Swap:**
+```bash
+# Validate deployment safety
+./validate-deployment.sh https://your-staging-slot.azurewebsites.net
+
+# Manual health check
+curl https://your-staging-slot.azurewebsites.net/health
+```
+
+**After Slot Swap:**
+```bash
+# Verify production health
+curl https://your-production.azurewebsites.net/health
+
+# Monitor Azure metrics
+az monitor metrics list \
+  --resource <resource-id> \
+  --metric Http5xx \
+  --start-time 2026-02-09T20:00:00Z \
+  --end-time 2026-02-09T20:15:00Z
+```
+
+**Emergency Rollback:**
+```bash
+# Swap back to previous slot
+az webapp deployment slot swap \
+  --resource-group <rg-name> \
+  --name <app-name> \
+  --slot <current-slot> \
+  --target-slot <previous-slot>
+```
+
+### Safety Features Summary
+
+| Feature | Purpose | Behavior |
+|---------|---------|----------|
+| Startup Validation | Prevent production issues | App exits if INJECT_ERROR=1 in Production |
+| /health Endpoint | Pre-deployment validation | Returns 503 if INJECT_ERROR enabled |
+| Slot Settings | Configuration isolation | Keep INJECT_ERROR sticky to test slots |
+| validate-deployment.sh | Automated checks | Validates health before swap |
+
+## Additional Resources
+
+- See [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed Azure App Service procedures
+- For questions or issues, contact the SRE team or file an issue in this repository
