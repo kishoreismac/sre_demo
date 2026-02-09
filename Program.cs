@@ -5,6 +5,45 @@ using System;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
+// PRODUCTION SAFETY CHECK: Block startup if INJECT_ERROR is enabled in Production
+var environment = app.Environment.EnvironmentName;
+var injectErrorSetting = Environment.GetEnvironmentVariable("INJECT_ERROR");
+if (environment == "Production" && injectErrorSetting == "1")
+{
+    Console.Error.WriteLine("CRITICAL ERROR: INJECT_ERROR=1 is not allowed in Production environment!");
+    Console.Error.WriteLine("Please disable INJECT_ERROR or mark it as a slot-specific setting.");
+    Environment.Exit(1);
+}
+
+// Health check endpoint for deployment validation
+app.MapGet("/health", async context =>
+{
+    bool injectError = Environment.GetEnvironmentVariable("INJECT_ERROR") == "1";
+    var env = app.Environment.EnvironmentName;
+    
+    if (injectError)
+    {
+        context.Response.StatusCode = 503; // Service Unavailable
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "unhealthy",
+            reason = "INJECT_ERROR is enabled",
+            environment = env,
+            timestamp = DateTime.UtcNow
+        });
+    }
+    else
+    {
+        context.Response.StatusCode = 200;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = "healthy",
+            environment = env,
+            timestamp = DateTime.UtcNow
+        });
+    }
+});
+
 app.MapGet("/", async context =>
 {
     context.Response.ContentType = "text/html; charset=utf-8";
